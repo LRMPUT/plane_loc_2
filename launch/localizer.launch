@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <node pkg="plane_loc" type="localizer_node" name="localizer" output="screen">
+        <param name="settings" value="$(find plane_loc_2)/cfg/settings.yml" />
+        <param name="map_topic" value="/mapper/map" />
+        <param name="score_thresh" value="235.675" />
+        <!--        <param name="score_thresh" value="120.0" />-->
+        <param name="score_diff_thresh" value="0.0" />
+        <param name="fit_thresh" value="0.07" />
+        <param name="distinct_thresh" value="4" />
+        <param name="matched_ratio_thresh" value="0.133784" />
+        <param name="trans_diff_thresh" value="0.5" />
+        <param name="ang_diff_thresh" value="10.0" />
+    </node>
+</launch>
