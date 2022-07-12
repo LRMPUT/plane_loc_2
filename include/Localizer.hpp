@@ -63,8 +63,6 @@ private:
 
     double scoreDiffThresh;
 
-    double fitThresh;
-
     double matchedRatioThresh;
 
     double distinctThresh;

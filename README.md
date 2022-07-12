@@ -16,22 +16,31 @@ Prerequesties:
 + OpenCV >= 3.0 
 + CGAL
 
+## v0.2
+
+Improvements:
+- Changed descriptor distance to be relative to the length of the descriptor. This gives better generalization to different scenes.
+- Using area of segments expressed in pixels rather than square meteres when selecting best views.
+- Bugfixes.
+
+## v0.1
+
+Described in the paper `PlaneLoc2: Indoor Global Localization Using Planar Segments and Passive Stereo Camera`.
+
 ## Paper
 
-If you find PlaneLoc useful in your academic work please cite the following paper:
+If you find PlaneLoc2 useful in your academic work please cite the following paper:
 
-    @article{wietrzykowski2019,
-        title = {{PlaneLoc}: Probabilistic global localization in {3-D} using local planar features},
-        author = {Jan Wietrzykowski and Piotr Skrzypczy\'{n}ski},
-        journal = {Robotics and Autonomous Systems},
-        volume = {113},
-        pages = {160 - 173},
-        year = {2019},
-        issn = {0921-8890},
-        doi = {https://doi.org/10.1016/j.robot.2019.01.008},
-        url = {http://www.sciencedirect.com/science/article/pii/S0921889018303701},
-        keywords = {Global localization, SLAM, Planar segments, RGB-D data},
-    }
+    @article{wietrzykowski2022,
+      author={Wietrzykowski, Jan},
+      journal={IEEE Access},
+      title={{PlaneLoc2: Indoor Global Localization Using Planar Segments and Passive Stereo Camera}},
+      year={2022},
+      volume={10},
+      number={},
+      pages={67219-67229},
+      doi={10.1109/ACCESS.2022.3185732}
+     }
 
 
 ## Building:

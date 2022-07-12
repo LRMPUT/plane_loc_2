@@ -42,7 +42,7 @@ void ObjInstance::addView(const ObjInstanceView::Ptr &nview) {
 ObjInstanceView::ConstPtr ObjInstance::getBestView(const Eigen::Matrix4d &pose) const {
     double largestArea = 0.0;
     for (int v = 0; v < views.size(); ++v) {
-        double curA = views[v]->getHull().getTotalArea();
+        double curA = views[v]->getImageArea();
         if (largestArea < curA) {
             largestArea = curA;
         }
@@ -53,7 +53,7 @@ ObjInstanceView::ConstPtr ObjInstance::getBestView(const Eigen::Matrix4d &pose) 
 
     for (int v = 0; v < views.size(); ++v) {
         // best view among at most two times smaller than largest
-        if (largestArea < 2 * views[v]->getHull().getTotalArea()) {
+        if (largestArea < 2 * views[v]->getImageArea()) {
             double curDist = views[v]->viewDist(pose);
             if (curDist < bestDist) {
                 bestDist = curDist;
@@ -73,7 +73,7 @@ ObjInstanceView::ConstPtr ObjInstance::getBestView(const Eigen::Matrix4d &pose) 
 ObjInstanceView::ConstPtr ObjInstance::getBestQualityView() const {
     double largestArea = 0.0;
     for (int v = 0; v < views.size(); ++v) {
-        double curA = views[v]->getHull().getTotalArea();
+        double curA = views[v]->getImageArea();
         if (largestArea < curA) {
             largestArea = curA;
         }
@@ -84,7 +84,7 @@ ObjInstanceView::ConstPtr ObjInstance::getBestQualityView() const {
 
     for (int v = 0; v < views.size(); ++v) {
         // best quality among at most two times smaller than largest
-        if (largestArea < 2 * views[v]->getHull().getTotalArea()) {
+        if (largestArea < 2 * views[v]->getImageArea()) {
             double curQ = views[v]->getQuality();
             if (bestQ < curQ) {
                 bestQ = curQ;

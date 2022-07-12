@@ -61,18 +61,11 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
                                                  int viewPort2,
                                                  const Eigen::Matrix4d &refTrans)
 {
-    static constexpr int kKnn = 2;
-
-    double planeAppThresh = (double) fs["matching"]["planeAppThresh"];
+    static constexpr int kKnn = 5;
 
     double planeToPlaneAngThresh = (double) fs["matching"]["planeToPlaneAngThresh"];
     double planeDistThresh = (double) fs["matching"]["planeDistThresh"];
     double planeToPlaneDistThresh = (double) fs["matching"]["planeToPlaneDistThresh"];
-
-    double scoreThresh = (double) fs["matching"]["scoreThresh"];
-    double sinValsThresh = (double) fs["matching"]["sinValsThresh"];
-    double planeEqDiffThresh = (double) fs["matching"]["planeEqDiffThresh"];
-    double intAreaThresh = (double) fs["matching"]["intAreaThresh"];
 
     Eigen::Matrix3d cameraMatrix;
     int nrows, ncols;
@@ -101,35 +94,39 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
             idToIdxLocal[bestView->getId()] = viewsLocal.size() - 1;
 
             ++nPlaneIdsLocal;
-            areaViewsLocal += bestView->getHull().getTotalArea();
+            // areaViewsLocal += bestView->getHull().getTotalArea();
+            areaViewsLocal += bestView->getImageArea();
         }
     }
 
-    // k = 5, 1917.405
-    // k = 2, 1897.878
-    // scene0000: k = 2, 90%, 1454.325
-    // scene0000: k = 2, 95%, 1774.830
-    std::vector<std::vector<ObjInstanceView::ConstPtr>> knns = globalMap.getKNN(viewsLocal, kKnn, 1454.325 * 1454.325);
+    // InPUT scene0000: k = 5, 90%, norm, 0.520
+    std::vector<std::vector<ObjInstanceView::ConstPtr>> knns = globalMap.getKNN(viewsLocal, kKnn, 0.520);
     std::unordered_map<int, int> idToIdxGlobal;
     std::unordered_map<int, int> idToPlaneIdGlobal;
     std::vector<ObjInstanceView::ConstPtr> viewsGlobal;
     std::vector<PotMatch> potMatches;
-    for (int v = 0; v < knns.size(); ++v) {
-        for (int k = 0; k < knns[v].size(); ++k) {
-            if (idToIdxGlobal.count(knns[v][k]->getId()) == 0) {
-                viewsGlobal.push_back(knns[v][k]);
-                idToIdxGlobal[knns[v][k]->getId()] = viewsGlobal.size() - 1;
-            }
-            potMatches.emplace_back(idToIdxGlobal.at(knns[v][k]->getId()),
-                                    idToIdxLocal.at(viewsLocal[v]->getId()),
-                                    (knns[v][k]->getDescriptor() - viewsLocal[v]->getDescriptor()).norm());
-        }
-    }
     for (const auto &obj : globalMap) {
         for (const auto &view : obj.second->getViews()) {
             idToPlaneIdGlobal[view->getId()] = obj.first;
         }
     }
+    for (int v = 0; v < knns.size(); ++v) {
+        for (int k = 0; k < knns[v].size(); ++k) {
+            // get the best quality view for this segment
+            int planeIdGlobal = idToPlaneIdGlobal.at(knns[v][k]->getId());
+            ObjInstanceView::ConstPtr bestViewGlobal = globalMap[planeIdGlobal]->getBestQualityView();
+
+            if (idToIdxGlobal.count(bestViewGlobal->getId()) == 0) {
+                viewsGlobal.push_back(bestViewGlobal);
+                idToIdxGlobal[bestViewGlobal->getId()] = viewsGlobal.size() - 1;
+            }
+            potMatches.emplace_back(idToIdxGlobal.at(bestViewGlobal->getId()),
+                                    idToIdxLocal.at(viewsLocal[v]->getId()),
+                                    (knns[v][k]->getDescriptor() - viewsLocal[v]->getDescriptor()).norm());
+        }
+    }
+
+    cout << "potMatches.size() = " << potMatches.size() << endl;
 
 
     cout << "Adding sets" << endl;
@@ -138,10 +135,10 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
                                                     viewsLocal,
                                                     planeDistThresh,
                                                     planeToPlaneAngThresh,
-                                                    planeToPlaneDistThresh,
+                                                    planeToPlaneDistThresh/*,
                                                     viewer,
                                                     viewPort1,
-                                                    viewPort2);
+                                                    viewPort2*/);
 
     chrono::high_resolution_clock::time_point endTripletTime = chrono::high_resolution_clock::now();
 
@@ -154,7 +151,9 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
     // std::ofstream transFile("trans.log", ios_base::app);
     std::ofstream transFile;
     for (int s = 0; s < potSets.size(); ++s) {
-//		cout << "s = " << s << endl;
+        // if (potSets.size() == 198180) {
+		//     cout << "s = " << s << endl;
+        // }
 
         std::vector<ObjInstanceView::ConstPtr> curViewsGlobal;
         std::vector<ObjInstanceView::ConstPtr> curViewsLocal;
@@ -171,8 +170,11 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
                                                        resError,
                                                        fullConstrObjs,
                                                        svdr,
-                                                       svdt);
-
+                                                       svdt/*,
+                                                        potSets.size() == 198180 && s == 24426*/);
+        // if (potSets.size() == 198180) {
+        //     cout << "found best trans" << endl;
+        // }
         if (transFile.is_open()) {
             transFile << potSets[s].size() << endl;
             for (int ch = 0; ch < potSets[s].size(); ++ch) {
@@ -185,7 +187,8 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
         }
 
         bool isAdded = false;
-        if (fullConstrObjs && resError < 1.003) {
+        // if (fullConstrObjs && resError < 1.003) {
+        if (fullConstrObjs && resError < 2.0) {
             // cout << "resError = " << resError << ", trans = " << transformObjs.transpose() << endl;
 
             transforms.emplace_back(transformObjs,
@@ -211,7 +214,8 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
 //		cout << "mapObjInvWeights = " << mapObjInvWeights << endl;
         double curWeight = 0.0;
         for (int p = 0; p < transforms[t].matchSet.size(); ++p) {
-            curWeight += viewsLocal[transforms[t].matchSet[p].plane2]->getHull().getTotalArea();
+            // curWeight += viewsLocal[transforms[t].matchSet[p].plane2]->getHull().getTotalArea();
+            curWeight += viewsLocal[transforms[t].matchSet[p].plane2]->getImageArea();
 //             PRINT(transforms[t].matchSet[p].planeAppDiff);
 //             curWeight += exp(-transforms[t].matchSet[p].planeAppDiff / 100.0);
         }
@@ -228,8 +232,8 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
             for (int p = 0; p < transforms[t].matchSet.size(); ++p) {
                 evalFile << viewsGlobal[transforms[t].matchSet[p].plane1]->getId() << " "
                          << viewsLocal[transforms[t].matchSet[p].plane2]->getId() << endl;
-                evalFile << viewsGlobal[transforms[t].matchSet[p].plane1]->getHull().getTotalArea() << " "
-                         << viewsLocal[transforms[t].matchSet[p].plane2]->getHull().getTotalArea() << endl;
+                evalFile << viewsGlobal[transforms[t].matchSet[p].plane1]->getImageArea() << " "
+                         << viewsLocal[transforms[t].matchSet[p].plane2]->getImageArea() << endl;
             }
         }
 
@@ -285,9 +289,16 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
         for (int t = transProb.size() - 1; t >= 0 && bestTrans.size() < 2; --t) {
             bool add = true;
             for (int i = 0; i < bestTrans.size() && add; ++i) {
-                double diff = Misc::transformLogDist(bestTrans[i], transforms[transProb[t].second].transform);
+                // double diff = Misc::transformLogDist(bestTrans[i], transforms[transProb[t].second].transform);
+                Eigen::Matrix4d diff = Misc::inverseTrans(Misc::toMatrix(bestTrans[i])) *
+                                       Misc::toMatrix(transforms[transProb[t].second].transform);
+                Vector6d diffLog = Misc::logMap(diff);
+                double logError = diffLog.norm();
+                double linError = diff.matrix().block<3, 1>(0, 3).norm();
+                double angError = diffLog.tail<3>().norm();
+
                 // if close to already added transform
-                if (diff < 0.16) {
+                if (linError < 1.0 && angError < 10.0 * M_PI / 180.0) {
                     add = false;
                 }
             }
@@ -299,6 +310,9 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
 
         {
             for (int t = 0; t < bestTrans.size(); ++t) {
+                cout << "t = " << t << endl;
+                cout << "bestTrans[t] = " << bestTrans[t].transpose() << endl;
+                cout << "bestTransProbs[t] = " << bestTransProbs[t] << endl;
 
                 std::vector<ObjInstanceView::ConstPtr> viewsLocalTrans;
                 for (const auto &view : viewsLocal) {
@@ -307,33 +321,7 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
                     viewsLocalTrans.push_back(viewTrans);
                 }
 
-                vector<pair<int, int>> matches;
-                set<int> localMatchedIdSet;
-                set<int> localMatchedPlaneIdSet;
-                double localMatchedArea = 0.0;
-                set<int> globalMatchedIdSet;
-                set<int> globalMatchedPlaneIdSet;
-                double globalMatchedArea = 0.0;
-                for (int vl = 0; vl < viewsLocalTrans.size(); ++vl) {
-                    for (int vg = 0; vg < viewsGlobal.size(); ++vg) {
-                        const ObjInstanceView::ConstPtr &localView = viewsLocalTrans[vl];
-                        const ObjInstanceView::ConstPtr &globalView = viewsGlobal[vg];
-                        if (localView->isMatching(*globalView)) {
-                            matches.emplace_back(vg, vl);
-                            localMatchedPlaneIdSet.insert(idToPlaneIdLocal.at(viewsLocalTrans[vl]->getId()));
-                            globalMatchedPlaneIdSet.insert(idToPlaneIdGlobal.at(viewsGlobal[vg]->getId()));
-
-                            if (localMatchedIdSet.count(viewsLocalTrans[vl]->getId()) == 0) {
-                                localMatchedArea += viewsLocalTrans[vl]->getHull().getTotalArea();
-                                localMatchedIdSet.insert(viewsLocalTrans[vl]->getId());
-                            }
-                            if (globalMatchedIdSet.count(viewsGlobal[vg]->getId()) == 0) {
-                                globalMatchedArea += viewsGlobal[vg]->getHull().getTotalArea();
-                                globalMatchedIdSet.insert(viewsGlobal[vg]->getId());
-                            }
-                        }
-                    }
-                }
+                // cout << "getting visible" << endl;
 
                 int nPlaneIdsGlobal = 0;
                 double areaViewsGlobal = 0.0;
@@ -345,11 +333,45 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
                                                                                            nPlaneIdsGlobal,
                                                                                            areaViewsGlobal);
 
+                cout << "computing matched ratio" << endl;
+
+                vector<pair<int, int>> matches;
+                set<int> localMatchedIdSet;
+                set<int> localMatchedPlaneIdSet;
+                double localMatchedArea = 0.0;
+                set<int> globalMatchedIdSet;
+                set<int> globalMatchedPlaneIdSet;
+                double globalMatchedArea = 0.0;
+                for (int vl = 0; vl < viewsLocalTrans.size(); ++vl) {
+                    for (int vg = 0; vg < visibleViewsGlobal.size(); ++vg) {
+                        const ObjInstanceView::ConstPtr &localView = viewsLocalTrans[vl];
+                        const ObjInstanceView::ConstPtr &globalView = visibleViewsGlobal[vg];
+                        if (localView->isMatching(*globalView/*, viewer, viewPort1, viewPort2*/)) {
+                            matches.emplace_back(vg, vl);
+                            localMatchedPlaneIdSet.insert(idToPlaneIdLocal.at(localView->getId()));
+                            globalMatchedPlaneIdSet.insert(idToPlaneIdGlobal.at(globalView->getId()));
+
+                            if (localMatchedIdSet.count(localView->getId()) == 0) {
+                                // localMatchedArea += viewsLocalTrans[vl]->getHull().getTotalArea();
+                                localMatchedArea += localView->getImageArea();
+                                localMatchedIdSet.insert(localView->getId());
+                            }
+                            if (globalMatchedIdSet.count(globalView->getId()) == 0) {
+                                // globalMatchedArea += viewsGlobal[vg]->getHull().getTotalArea();
+                                globalMatchedArea += globalView->getImageArea();
+                                globalMatchedIdSet.insert(globalView->getId());
+                            }
+                        }
+                    }
+                }
+
                 double matchedRatio = std::min(localMatchedArea / areaViewsLocal,
                                                globalMatchedArea / areaViewsGlobal);
                 int matchedDistinct = std::min(localMatchedPlaneIdSet.size(),
                                                globalMatchedPlaneIdSet.size());
 
+                cout << "matchedRatio = " << matchedRatio << endl;
+                cout << "matchedDistinct = " << matchedDistinct << endl;
 
                 bestTransDistinct.push_back(matchedDistinct);
                 bestTransMatchedRatio.push_back(matchedRatio);
@@ -359,7 +381,7 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
                     std::vector<ObjInstanceView::ConstPtr> curViewsGlobal;
                     std::vector<ObjInstanceView::ConstPtr> curViewsLocal;
                     for (int ch = 0; ch < matches.size(); ++ch) {
-                        curViewsGlobal.push_back(viewsGlobal[matches[ch].first]);
+                        curViewsGlobal.push_back(visibleViewsGlobal[matches[ch].first]);
                         curViewsLocal.push_back(viewsLocal[matches[ch].second]);
                     }
 
@@ -375,7 +397,7 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
                     bestTrans[t] = transformObjs;
                     bestTransProbs[t] = evalPoint(transformObjs, dist);
 
-                    if (refTrans != Eigen::Matrix4d::Zero()) {
+                    if (refTrans != Eigen::Matrix4d::Zero() /*&& t == 0*/) {
                         Eigen::Matrix4d diff = Misc::inverseTrans(Misc::toMatrix(transformObjs)) * refTrans;
                         Vector6d diffLog = Misc::logMap(diff);
                         double logError = diffLog.norm();
@@ -385,9 +407,11 @@ Matching::MatchType Matching::matchLocalToGlobal(const cv::FileStorage &fs,
                         // std::ofstream poseFile("pose.log", ios_base::app);
                         std::ofstream poseFile;
                         if (poseFile.is_open()) {
-                            bool isCorrect = linError <= 0.5 && angError * 180.0 / M_PI <= 10.0;
+                            bool isCorrect = linError <= 1.0 && angError * 180.0 / M_PI <= 10.0;
 
-                            poseFile << isCorrect << " "
+                            poseFile << t << " "
+                                     << linError << " "
+                                     << angError << " "
                                      << bestTransProbs[t] << " "
                                      << bestTransMatchedRatio[t] << " "
                                      << bestTransDistinct[t] << endl;
@@ -670,8 +694,12 @@ void Matching::compObjDistances(const std::vector<ObjInstanceView::ConstPtr> &vi
 //        cout << "o1 = " << o1 << endl;
         for (int o2 = o1 + 1; o2 < views.size(); ++o2) {
 //            cout << "o2 = " << o2 << endl;
+//             double dist1 = views[o1]->getPlaneEstimator().distance(views[o2]->getPlaneEstimator());
+//             double dist2 = views[o2]->getPlaneEstimator().distance(views[o1]->getPlaneEstimator());
+//             objDistances[o1][o2] = std::max(dist1, dist2);
+//             objDistances[o2][o1] = std::max(dist1, dist2);
+
             double dist = (views[o1]->getPlaneEstimator().getCentroid() - views[o2]->getPlaneEstimator().getCentroid()).norm();
-//			cout << "o1 = " << o1 << ", o2 = " << o2 << endl;
             objDistances[o1][o2] = dist;
             objDistances[o2][o1] = dist;
         }
@@ -684,21 +712,29 @@ Vector7d Matching::bestTransformObjs(const std::vector<ObjInstanceView::ConstPtr
                                      double &resError,
                                      bool &fullConstr,
                                      double &svdr,
-                                     double &svdt)
+                                     double &svdt,
+                                     bool debug)
 {
     // Build the problem for the linear algorithm
     Eigen::MatrixXd A(objs1.size()*4*3, 12);
     Eigen::VectorXd b(objs1.size()*4*3);
     int nEq = 0;
     for(int o = 0; o < objs1.size(); ++o){
-        Eigen::Matrix3d constrVectors1 = objs1[o]->getPlaneEstimator().getConstrVectors();
+        const Eigen::Matrix3d &constrVectors1 = objs1[o]->getPlaneEstimator().getConstrVectors();
         // Eigen::Vector3d centroid1 = objs1[o]->getPlaneEstimator().getCentroid();
-        Eigen::Vector3d centroid1 = objs1[o]->getCentroid();
+        const Eigen::Vector3d &centroid1 = objs1[o]->getCentroid();
         // Eigen::MatrixXd eqPoints2 = objs2[o]->getPlaneEstimator().getEqPoints();
-        Eigen::MatrixXd eqPoints2 = objs2[o]->getEqPoints();
-        // PRINT(constrVectors1);
-        // PRINT(centroid1);
-        // PRINT(eqPoints2);
+        const Eigen::MatrixXd &eqPoints2 = objs2[o]->getEqPoints();
+        if (debug) {
+            PRINT(constrVectors1);
+            PRINT(centroid1);
+            PRINT(eqPoints2);
+            PRINT(objs2[o]->getImageArea());
+            PRINT(objs2[o]->getPlaneEstimator().getCentroid());
+            PRINT(objs2[o]->getPlaneEstimator().getCovar());
+            PRINT(objs2[o]->getPlaneEq());
+            PRINT(objs2[o]->getCentroid());
+        }
         for(int cv = 0; cv < constrVectors1.cols(); ++cv) {
             for(int pt = 0; pt < eqPoints2.cols(); ++pt) {
                 A.block<1, 3>(nEq, 0) = constrVectors1.col(cv)(0) * eqPoints2.col(pt).transpose();
@@ -713,9 +749,15 @@ Vector7d Matching::bestTransformObjs(const std::vector<ObjInstanceView::ConstPtr
         }
     }
 
+    if (debug) {
+        PRINT(A);
+    }
     Eigen::JacobiSVD<Eigen::MatrixXd> svd(A, Eigen::ComputeThinU | Eigen::ComputeThinV);
     Eigen::VectorXd rt = svd.solve(b);
 
+    if (debug) {
+        PRINT(rt);
+    }
     // PRINT(svd.singularValues().transpose());
     // PRINT(A);
     // PRINT(b);
@@ -732,6 +774,9 @@ Vector7d Matching::bestTransformObjs(const std::vector<ObjInstanceView::ConstPtr
     // PRINT(svdR.singularValues().transpose());
     R = svdR.matrixU() * svdR.matrixV().transpose();
 
+    if (debug) {
+        PRINT(R);
+    }
     // PRINT(R);
     // PRINT(t);
 
@@ -739,6 +784,9 @@ Vector7d Matching::bestTransformObjs(const std::vector<ObjInstanceView::ConstPtr
     Eigen::VectorXd error(objs1.size()*4*3);
     // Gauss Newton optimization
     for(int iter = 0; iter < 5; ++iter) {
+        if (debug) {
+            cout << iter << endl;
+        }
         nEq = 0;
         for(int o = 0; o < objs1.size(); ++o) {
             Eigen::Matrix3d constrVectors1 = objs1[o]->getPlaneEstimator().getConstrVectors();
@@ -765,7 +813,9 @@ Vector7d Matching::bestTransformObjs(const std::vector<ObjInstanceView::ConstPtr
         Eigen::JacobiSVD<Eigen::MatrixXd> svdIter(JtJ, Eigen::ComputeThinU | Eigen::ComputeThinV);
         Eigen::VectorXd delta = svdIter.solve(-Jte);
 
-        // PRINT(delta);
+        if (debug) {
+            PRINT(delta);
+        }
         if(delta.norm() < 1.0e-3) {
             break;
         }
@@ -794,7 +844,7 @@ Vector7d Matching::bestTransformObjs(const std::vector<ObjInstanceView::ConstPtr
         // If the smallest singular value is below the threshold
         svdr = svdIterR.singularValues()(2);
         svdt = svdItert.singularValues()(2);
-        if (svdr < 323.464 || svdt < 83.088) {
+        if (svdr < 284.046 || svdt < 100.0) {
             fullConstr = false;
         }
         else {
@@ -863,7 +913,7 @@ std::vector<ObjInstanceView::ConstPtr>
                         planeIdToArea[planeIdCntView.first] = 0.0;
                     }
                     planeIdToArea[planeIdCntView.first] = std::max(planeIdToArea[planeIdCntView.first],
-                                                                   planeIdCntView.second.second->getHull().getTotalArea());
+                                                                   (double)planeIdCntView.second.second->getImageArea());
                 }
             }
         }
@@ -881,16 +931,10 @@ std::vector<ObjInstanceView::ConstPtr>
 
 double Matching::evalPoint(const Vector7d &pt,
                            const vectorProbDistKernel &dist) {
-    double res = 0.0;
-    double wSum = 0.0;
-    for (int k = 0; k < dist.size(); ++k) {
-        res += dist[k].eval(pt);
-        wSum += dist[k].getW();
-    }
-    // if (wSum > 1.0e-12) {
-    //     res /= wSum;
-    // }
-    return res;
+    Eigen::Matrix4d ptMat = Misc::toMatrix(pt);
+    Eigen::Matrix4d ptMatInv = Misc::inverseTrans(ptMat);
+
+    return evalPoint(ptMatInv, dist);
 }
 
 double Matching::evalPoint(const Eigen::Matrix4d &ptInvMat,

@@ -75,6 +75,8 @@ ObjInstanceView::ObjInstanceView(int iid,
     eqPoints = planeEstimator.compEqPointsPlaneEq(planeEq);
     centroid = planeEstimator.compCentroidPlaneEq(planeEq);
 
+    imageArea = points.cols();
+
     filter();
     // cout << "\n\nid = " << id << endl;
     // cout << "points = \n" << points << endl;
@@ -107,10 +109,11 @@ ObjInstanceView::ObjInstanceView(const ObjInstanceView &other)
     planeEstimator = other.planeEstimator;
     eqPoints = other.eqPoints;
     centroid = other.centroid;
+    imageArea = other.imageArea;
 }
 
 pcl::PointCloud<pcl::PointXYZRGB>::Ptr ObjInstanceView::getPointCloud() const {
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>());
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>(points.cols(), 1));
     for(int p = 0; p < points.cols(); ++p) {
         pcl::PointXYZRGB pt;
         pt.getVector4fMap() = points.col(p).cast<float>();
@@ -118,7 +121,7 @@ pcl::PointCloud<pcl::PointXYZRGB>::Ptr ObjInstanceView::getPointCloud() const {
         pt.g = pointsCol.col(p)(1);
         pt.b = pointsCol.col(p)(2);
 
-        pointCloud->push_back(pt);
+        pointCloud->at(p) = pt;
     }
 
     return pointCloud;
@@ -153,116 +156,54 @@ bool ObjInstanceView::isMatching(const ObjInstanceView &other,
 
         double dist1 = planeEstimator.distance(other.getEqPoints());
         double dist2 = other.getPlaneEstimator().distance(getEqPoints());
-        //            double dist1 = mapObj.getEkf().distance(newObj.getEkf().getX());
-        //            double dist2 = newObj.getEkf().distance(mapObj.getEkf().getX());
-        // cout << "dist1 = " << dist1 << endl;
-        // cout << "dist2 = " << dist2 << endl;
-        // cout << "constrVec1 = "<< endl << planeEstimator.getConstrVectors() << endl;
-        // cout << "constrVec2 = "<< endl << other.getPlaneEstimator().getConstrVectors() << endl;
-        // cout << "covar1 = "<< endl << planeEstimator.getCovar() << endl;
-        // cout << "covar2 = "<< endl << other.getPlaneEstimator().getCovar() << endl;
-        // cout << "eqPoints1 = "<< endl << planeEstimator.getEqPoints() << endl;
-        // cout << "eqPoints2 = "<< endl << other.getPlaneEstimator().getEqPoints() << endl;
 
-        //            double diff = Matching::planeEqDiffLogMap(mapObj, newObj, transform);
-        //                    cout << "diff = " << diff << endl;
-        // if plane equation is similar
+        if (viewer) {
+            display(viewer, viewPort1);
+            other.display(viewer, viewPort1, 1.0, 1.0, 0.0, 0.0);
+            // other.display(viewer, viewPort2);
+
+            static bool init = false;
+            if (!init) {
+
+                viewer->resetStoppedFlag();
+                viewer->initCameraParameters();
+                viewer->setCameraPosition(0.0, 0.0, 6.0, 0.0, -1.0, 0.0);
+
+                while (!viewer->wasStopped()) {
+                    viewer->spinOnce(100);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                }
+
+                // viewer->spinOnce(100);
+
+                init = true;
+            } else {
+                // viewer->spinOnce(100);
+                viewer->resetStoppedFlag();
+                while (!viewer->wasStopped()) {
+                    viewer->spinOnce(100);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                }
+            }
+
+            cleanDisplay(viewer, viewPort1);
+            other.cleanDisplay(viewer, viewPort1);
+            // other.cleanDisplay(viewer, viewPort2);
+        }
+        // if point distributions are similar
         if (dist1 < 2.0 && dist2 < 2.0) {
 
             double descDist = descriptorDist(descriptor, other.getDescriptor());
             // cout << "histDist = " << histDist << endl;
             if (descDist < std::numeric_limits<double>::infinity()) {
-                
-                double intArea = 0.0;
-                
-                if (viewer) {
-                    hull->cleanDisplay(viewer, viewPort1);
-                    other.getHull().cleanDisplay(viewer, viewPort2);
-                }
-    
-                // Vector7d transform;
-                // // identity
-                // transform << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0;
-                // double intScore = Matching::checkConvexHullIntersection(*this,
-                //                                                         other,
-                //                                                         transform,
-                //                                                         intArea,
-                //                                                         viewer,
-                //                                                         viewPort1,
-                //                                                         viewPort2);
-                if (viewer) {
-                    hull->display(viewer, viewPort1);
-                    other.getHull().display(viewer, viewPort2);
-                }
-
-                // cout << "intScore = " << intScore << endl;
-//                        cout << "intArea = " << intArea << endl;
-                // if intersection of convex hulls is big enough
-                // if (intScore > 0.3) {
-                if (true) {
-                   // cout << "merging planes" << endl;
-                    // merge the objects
-                    return true;
-                }
+            // if (descDist < 0.5) {
+                return true;
             }
         }
     }
     return false;
 }
 
-// void ObjInstanceView::merge(const ObjInstanceView &other) {
-//
-//     planeEstimator.update(other.getPlaneEstimator().getCentroid(),
-//                           other.getPlaneEstimator().getCovar(),
-//                           other.getPlaneEstimator().getNpts());
-//     // Eigen::Vector4d newPlaneEq = planeEstimator.getPlaneEq();
-//
-//     Eigen::MatrixPt newPoints(points.rows(), points.cols() + other.points.cols());
-//     newPoints << points, other.points;
-//     std::swap(points, newPoints);
-//
-//     Eigen::MatrixPt newPointsOrig(pointsOrig.rows(), pointsOrig.cols() + other.pointsOrig.cols());
-//     newPointsOrig << pointsOrig, other.pointsOrig;
-//     std::swap(pointsOrig, newPointsOrig);
-//
-//     Eigen::MatrixCol newPointsCol(pointsCol.rows(), pointsCol.cols() + other.pointsCol.cols());
-//     newPointsCol << pointsCol, other.pointsCol;
-//     std::swap(pointsCol, newPointsCol);
-//
-//     Eigen::MatrixXd newPointsCovar(pointsCovar.rows(), pointsCovar.cols() + other.pointsCovar.cols());
-//     newPointsCovar << pointsCovar, other.pointsCovar;
-//     std::swap(pointsCovar, newPointsCovar);
-//
-//     // for(int p = 0; p < points.cols(); ++p) {
-//     //     points.col(p).head<3>() = Misc::projectPointOnPlane(points.col(p).head<3>(), newPlaneEq);
-//     // }
-//
-//     // pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud = getPointCloud();
-//     //
-//     // pcl::VoxelGrid<pcl::PointXYZRGB> downsamp;
-//     // downsamp.setInputCloud(pointCloud);
-//     // downsamp.setLeafSize (0.01f, 0.01f, 0.01f);
-//     // downsamp.filter(*pointCloud);
-//     //
-//     // points = Eigen::MatrixPt::Ones(points.rows(), pointCloud->size());
-//     // pointsCol = Eigen::MatrixCol(points.rows(), pointCloud->size());
-//     // for(int p = 0; p < pointCloud->size(); ++p) {
-//     //     points.col(p).head<3>() = pointCloud->at(p).getVector3fMap().cast<double>();
-//     //     pointsCol.col(p)(0) = pointCloud->at(p).r;
-//     //     pointsCol.col(p)(1) = pointCloud->at(p).g;
-//     //     pointsCol.col(p)(2) = pointCloud->at(p).b;
-//     // }
-//
-//     filter();
-//
-//     projectOntoPlane();
-//
-//     *hull = ConcaveHull(points, getPlaneEq());
-//
-//     compColorHist();
-//
-//     obsCnt += 1;
-// }
 
 void ObjInstanceView::transform(const Vector7d &transform) {
     Eigen::Matrix4d T = Misc::toMatrix(transform);
@@ -396,7 +337,7 @@ void ObjInstanceView::filter() {
 
 double ObjInstanceView::descriptorDist(const Eigen::VectorXd &desc1, const Eigen::VectorXd &desc2) {
 //            double histDist = cv::compareHist(frameObjFeats[of], mapObjFeats[om], cv::HISTCMP_CHISQR);
-    return (desc1 - desc2).norm();
+    return (desc1 - desc2).norm() / desc1.norm();
 }
 
 double ObjInstanceView::viewDist(const Eigen::Matrix4d &viewPose) const {

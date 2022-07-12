@@ -106,6 +106,10 @@ public:
     inline std::unordered_map<int, ObjInstance::Ptr>::const_iterator end() const {
         return planeIdToObj.end();
     }
+
+    inline ObjInstance::ConstPtr operator[](int planeId) const {
+        return planeIdToObj.at(planeId);
+    }
     
     void mergeNewObjInstanceViews(const std::vector<ObjInstanceView::Ptr> &newObjInstanceViews,
                                   const Vector7d &pose,
@@ -130,7 +134,7 @@ public:
 
     std::vector<std::vector<ObjInstanceView::ConstPtr>> getKNN(const std::vector<ObjInstanceView::ConstPtr> &viewsQuery,
                                                           int k,
-                                                          double maxDist2 = std::numeric_limits<double>::infinity());
+                                                          double maxDist = std::numeric_limits<double>::infinity());
 
     std::unordered_map<int, std::pair<int, ObjInstanceView::ConstPtr>>
     getVisibleObjs(const Vector7d &pose,
@@ -156,6 +160,11 @@ public:
                  float g = -1.0,
                  float b = -1.0,
                  bool dispInfo = true);
+
+    void cleanDisplay(pcl::visualization::PCLVisualizer::Ptr viewer,
+                     int v1,
+                     int v2,
+                      bool dispInfo = true);
 
     void exportPointCloud(const std::string &path);
 

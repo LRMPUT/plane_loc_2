@@ -533,7 +533,7 @@ void Map::shiftIds(int startId) {
 
 std::vector<std::vector<ObjInstanceView::ConstPtr>> Map::getKNN(const std::vector<ObjInstanceView::ConstPtr> &viewsQuery,
                                                            int k,
-                                                           double maxDist2)
+                                                           double maxDist)
 {
     int nq = viewsQuery.size();
     std::vector<std::vector<ObjInstanceView::ConstPtr>> retKNN(nq);
@@ -558,7 +558,7 @@ std::vector<std::vector<ObjInstanceView::ConstPtr>> Map::getKNN(const std::vecto
 
         for (int i = 0; i < viewsQuery.size(); ++i) {
             for (int ki = 0; ki < k; ki++) {
-                if (dists2(ki, i) < maxDist2) {
+                if (sqrt(dists2(ki, i)) / viewsQuery[i]->getDescriptor().norm() < maxDist) {
                     const int &planeIdMatch = planeIdViews[idxs(ki, i)].first;
                     const int &viewIdxMatch = planeIdViews[idxs(ki, i)].second;
                     const ObjInstanceView::Ptr &viewMatch = planeIdToObj[planeIdMatch]->getViews()[viewIdxMatch];
@@ -661,36 +661,66 @@ void Map::display(pcl::visualization::PCLVisualizer::Ptr viewer,
                   float b,
                   bool dispInfo)
 {
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcCol = getColorPointCloud();
-    viewer->addPointCloud(pcCol, "cloud_color_map_" + std::to_string((unsigned long long)this), v1);
+    if (v1 >= 0) {
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcCol = getColorPointCloud();
+        viewer->addPointCloud(pcCol, "cloud_color_map_" + std::to_string((unsigned long long) this), v1);
 
-    if (r >= 0.0 && g >= 0.0 && b >= 0.0) {
-        viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR,
-                                                 r, g, b,
-                                                 "cloud_color_map_" + std::to_string((unsigned long long)this),
-                                                 v1);
-    }
+        if (r >= 0.0 && g >= 0.0 && b >= 0.0) {
+            viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR,
+                                                     r, g, b,
+                                                     "cloud_color_map_" + std::to_string((unsigned long long) this),
+                                                     v1);
+        }
+        if (dispInfo) {
+            for (auto &planeIdObj: planeIdToObj) {
+                const ObjInstance::Ptr &obj = planeIdObj.second;
+                const int &planeId = planeIdObj.first;
+                ObjInstanceView::ConstPtr view = obj->getBestQualityView();
 
-    pcl::PointCloud<pcl::PointXYZL>::Ptr pcLab = getLabeledPointCloud();
-    viewer->addPointCloud(pcLab, "cloud_labeled_map_" + std::to_string((unsigned long long)this), v2);
-
-    if (dispInfo) {
-        for (auto &planeIdObj: planeIdToObj) {
-            const ObjInstance::Ptr &obj = planeIdObj.second;
-            const int &planeId = planeIdObj.first;
-            ObjInstanceView::ConstPtr view = obj->getBestQualityView();
-
-            if (view) {
-                Eigen::Vector3d cent = view->getPlaneEstimator().getCentroid();
-                viewer->addText3D("id: " + to_string(view->getId()) +
-                                  ", eol: " + to_string(obj->getEolCnt()),
-                                  pcl::PointXYZ(cent(0), cent(1), cent(2)),
-                                  0.05,
-                                  1.0, 1.0, 1.0,
-                                  string("plane_text_ba_") + to_string(planeId),
-                                  v1);
+                if (view) {
+                    Eigen::Vector3d cent = view->getPlaneEstimator().getCentroid();
+                    viewer->addText3D("id: " + to_string(view->getId()) +
+                                      ", eol: " + to_string(obj->getEolCnt()),
+                                      pcl::PointXYZ(cent(0), cent(1), cent(2)),
+                                      0.05,
+                                      1.0, 1.0, 1.0,
+                                      string("plane_text_ba_") + to_string(planeId),
+                                      v1);
+                }
             }
         }
+    }
+
+    if (v2 >= 0) {
+        pcl::PointCloud<pcl::PointXYZL>::Ptr pcLab = getLabeledPointCloud();
+        viewer->addPointCloud(pcLab, "cloud_labeled_map_" + std::to_string((unsigned long long) this), v2);
+    }
+}
+
+void Map::cleanDisplay(pcl::visualization::PCLVisualizer::Ptr viewer,
+                  int v1,
+                  int v2,
+                       bool dispInfo) {
+    if (v1 >= 0) {
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcCol = getColorPointCloud();
+        viewer->removePointCloud("cloud_color_map_" + std::to_string((unsigned long long) this), v1);
+
+        if (dispInfo) {
+            for (auto &planeIdObj: planeIdToObj) {
+                const ObjInstance::Ptr &obj = planeIdObj.second;
+                const int &planeId = planeIdObj.first;
+                ObjInstanceView::ConstPtr view = obj->getBestQualityView();
+
+                if (view) {
+                    viewer->removeText3D(string("plane_text_ba_") + to_string(planeId),
+                                         v1);
+                }
+            }
+        }
+    }
+
+    if (v2 >= 0) {
+        viewer->removePointCloud("cloud_labeled_map_" + std::to_string((unsigned long long) this), v2);
     }
 }
 
@@ -764,7 +794,7 @@ std::unordered_map<int, std::pair<int, ObjInstanceView::ConstPtr>> Map::getVisib
         const int &planeId = planeIdCntView.first;
         const ObjInstanceView &view = *planeIdCntView.second.second;
 
-        // cout << "id = " << view->getId() << endl;
+        // cout << "id = " << view.getId() << endl;
 
         Eigen::Vector4d planeEqCamera = poseMatt * view.getPlaneEq();
         // cout << "planeEqCamera = " << planeEqCamera.transpose() << endl;
@@ -808,7 +838,7 @@ std::unordered_map<int, std::pair<int, ObjInstanceView::ConstPtr>> Map::getVisib
             }
 
             const std::vector<Eigen::MatrixPt> &polygons3d = hullClip.getPolygons3d();
-//            cout << "polygons3d.size() = " << polygons3d.size() << endl;
+            // cout << "polygons3d.size() = " << polygons3d.size() << endl;
             for (const Eigen::MatrixPt &poly3d : polygons3d) {
                 polyCont.push_back(new cv::Point[poly3d.cols()]);
                 polyContNpts.push_back(poly3d.cols());
@@ -821,8 +851,8 @@ std::unordered_map<int, std::pair<int, ObjInstanceView::ConstPtr>> Map::getVisib
 //                for (int pt = 0; pt < poly3d->size(); ++pt) {
 //                    cout << poly3d->at(pt).getVector3fMap().transpose() << endl;
 //                }
-//                cout << "cameraMatrix = " << cameraMatrix << endl;
-//                cout << "pointsReproj = " << pointsReproj << endl;
+//                 cout << "cameraMatrix = " << cameraMatrix << endl;
+//                 cout << "pointsReproj = " << pointsReproj << endl;
 
                 int corrPointCnt = 0;
                 for (int pt = 0; pt < pointsReproj.cols; ++pt) {
@@ -865,17 +895,21 @@ std::unordered_map<int, std::pair<int, ObjInstanceView::ConstPtr>> Map::getVisib
                 }
                 // cout << "polyImagePts.size() = " << polyImagePts.size() << endl;
                 vectorVector3d polyPlanePts;
-                Misc::projectImagePointsOntoPlane(polyImagePts,
-                                                  polyPlanePts,
-                                                  cameraMatrix,
-                                                  planeEqCamera);
-                for (int pt = 0; pt < polyImagePts.size(); ++pt) {
-                    int x = std::round(polyImagePts[pt](0));
-                    int y = std::round(polyImagePts[pt](1));
-                    // depth is z coordinate
-                    double d = polyPlanePts[pt](2);
+                bool projSuccess = Misc::projectImagePointsOntoPlane(polyImagePts,
+                                                                  polyPlanePts,
+                                                                     cameraMatrix,
+                                                                     planeEqCamera);
+                if (projSuccess) {
+                    for (int pt = 0; pt < polyImagePts.size(); ++pt) {
+                        int x = std::round(polyImagePts[pt](0));
+                        int y = std::round(polyImagePts[pt](1));
+                        // depth is z coordinate
+                        double d = polyPlanePts[pt](2);
 
-                    projPlanes[y][x].push_back(make_pair(d, planeId));
+                        // cout << "inserting point at (" << y << ", " << x << ") with d = " << d << endl;
+
+                        projPlanes[y][x].push_back(make_pair(d, planeId));
+                    }
                 }
             }
 
@@ -918,6 +952,7 @@ std::unordered_map<int, std::pair<int, ObjInstanceView::ConstPtr>> Map::getVisib
         }
     }
 
+    // cout << "searching nearest" << endl;
     for(int r = 0; r < rows; ++r) {
         for (int c = 0; c < cols; ++c) {
             vector<pair<double, int>> &curPlanes = projPlanes[r][c];
@@ -982,15 +1017,15 @@ void Map::buildKdtree() {
         const auto &views = obj->getViews();
 
         double largestArea = 0.0;
-        for (int v = 0; v < views.size(); ++v) {
-            double curA = views[v]->getHull().getTotalArea();
-            if (largestArea < curA) {
-                largestArea = curA;
-            }
-        }
+        // for (int v = 0; v < views.size(); ++v) {
+        //     double curA = views[v]->getImageArea();
+        //     if (largestArea < curA) {
+        //         largestArea = curA;
+        //     }
+        // }
         // only views larger than half the size of the largest view
         for (int v = 0; v < views.size(); ++v) {
-            if (largestArea < 2.0 * views[v]->getHull().getTotalArea()) {
+            if (largestArea < 2.0 * views[v]->getImageArea()) {
                 planeIdViews.emplace_back(planeId, v);
                 descsVec.push_back(views[v]->getDescriptor());
             }

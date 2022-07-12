@@ -131,6 +131,10 @@ public:
         return centroid;
     }
 
+    inline const int& getImageArea() const {
+        return imageArea;
+    }
+
     void transform(const Vector7d &transform);
 
     const Eigen::VectorXd &getDescriptor() const {
@@ -197,6 +201,7 @@ private:
 
     Eigen::Vector3d centroid;
 
+    int imageArea;
     
     friend class boost::serialization::access;
     
@@ -217,6 +222,7 @@ private:
         ar & planeEstimator;
         ar & eqPoints;
         ar & centroid;
+        ar & imageArea;
     }
 };
 

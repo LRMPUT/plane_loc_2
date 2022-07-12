@@ -196,7 +196,7 @@ bool Misc::projectImagePointsOntoPlane(const vectorVector2d &pts,
     C << 0, 0, 0, 1;
     
     double den = planeEq.transpose() * C;
-//    cout << "den = " << den << endl;
+    // cout << "den = " << den << endl;
     
     // plane through camera center
     if(abs(den) < eps){
@@ -211,14 +211,14 @@ bool Misc::projectImagePointsOntoPlane(const vectorVector2d &pts,
                     0,      0,      0;
         
         Eigen::Matrix<double, 1, 3> pPpinv = planeEq.transpose() * Ppinv;
-//        cout << "pPinv = " << pPpinv << endl;
+        // cout << "pPinv = " << pPpinv << endl;
         
         for(const Eigen::Vector2d &pt2d : pts) {
             // point in homogeneous cooridinates
             Eigen::Vector3d pt;
             pt << pt2d(0), pt2d(1), 1;
             
-//            cout << "pt = " << pt.transpose() << endl;
+            // cout << "pt = " << pt.transpose() << endl;
             
             double lambda = - (pPpinv * pt)(0) / den;
             
@@ -231,7 +231,7 @@ bool Misc::projectImagePointsOntoPlane(const vectorVector2d &pts,
 //            }
             Eigen::Vector4d pt3d = Ppinv * pt + lambda * C;
             
-//            cout << "pt3d = " << pt3d.transpose() << endl;
+            // cout << "pt3d = " << pt3d.transpose() << endl;
             
             // adding point in inhomogeneous coordinates
             pts3d.push_back(pt3d.head<3>()/pt3d(3));

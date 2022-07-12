@@ -27,24 +27,36 @@ map:
 
   mapFiles:
 #    - "/mnt/data/TERRINet/scenes/scene0000_00/scene0000_00.map"
-    - "/mnt/data/TERRINet/scenes/scene0001_00/scene0001_00.map"
+#    - "/mnt/data/TERRINet/scenes/scene0001_00/scene0001_00.map"
 #    - "/mnt/data/TERRINet/scenes/scene0002_01/scene0002_01.map"
+#    - "/media/janw/JanW/datasets/JW/InPUT/scenes/scene0000_00/scene0000_00.map"
+    - "/media/janw/JanW/datasets/JW/InPUT/scenes/scene0001_00/scene0001_00.map"
 
 matching:
 
-  planeToPlaneAngThresh: 0.213
+#  planeToPlaneAngThresh: 0.239
+  planeToPlaneAngThresh: 0.227
   planeDistThresh: 15.0
-  planeToPlaneDistThresh: 0.802
+#  planeToPlaneDistThresh: 0.849
+  planeToPlaneDistThresh: 16.0
 
 planeSlam:
 
   # TERRINet
+#  cameraMatrix: !!opencv-matrix
+#    rows: 3
+#    cols: 3
+#    dt: f
+#    data: [ 496.635831, 0.0, 334.972011,
+#            0.0, 496.635831, 248.444878,
+#            0.0, 0.0, 1.0 ]
+  # InPUT
   cameraMatrix: !!opencv-matrix
     rows: 3
     cols: 3
     dt: f
-    data: [ 496.635831, 0.0, 334.972011,
-            0.0, 496.635831, 248.444878,
+    data: [ 499.653747, 0.0, 308.968590,
+            0.0, 499.653747, 226.772821,
             0.0, 0.0, 1.0 ]
 
   nrows: 480

@@ -178,9 +178,9 @@ def main():
             depth = depth.astype(np.float32) / 1000.0
 
             depth_stddev_file = os.path.join(depth_stddev_dir, frame_num + '.png')
-            # depth_stddev = cv2.imread(depth_stddev_file, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
-            # depth_stddev = depth_stddev.astype(np.float32) / 1000.0
-            depth_stddev = 0.02 * np.ones_like(depth)
+            depth_stddev = cv2.imread(depth_stddev_file, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+            depth_stddev = depth_stddev.astype(np.float32) / 1000.0
+            # depth_stddev = 0.02 * np.ones_like(depth)
             depth_covar = np.square(depth_stddev)
 
             segmentation_file = os.path.join(segmentation_dir, frame_num + '.png')
@@ -193,7 +193,7 @@ def main():
             depth_gt_file = os.path.join(depth_gt_dir, frame_num + '.png')
             depth_gt = cv2.imread(depth_gt_file, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
             depth_gt = depth_gt.astype(np.float32) / 1000.0
-            depth = depth_gt
+            # depth = depth_gt
 
             plane_ids = np.unique(segmentation)
             if plane_ids[0] == -1:
@@ -203,6 +203,9 @@ def main():
             masks = np.zeros((cur_plane_eqs.shape[0], segmentation.shape[0], segmentation.shape[1]), dtype=np.float32)
             for idx, plane_id in enumerate(plane_ids):
                 masks[idx, :, :] = np.where(segmentation == plane_id, 1.0, 0.0)
+
+            if np.isnan(cur_plane_eqs).any() or (np.linalg.norm(cur_plane_eqs, axis=1) < 1e-5).any():
+                print(cur_plane_eqs)
 
             T_c_w_inv_t = T_w_c.transpose()
             cur_plane_eqs_c = np.matmul(T_c_w_inv_t, cur_plane_eqs.transpose()).transpose()
@@ -217,9 +220,9 @@ def main():
             color_msg.header = header_cam
             color_msg.encoding = 'bgr8'
 
-            # det_image_msg = bridge.cv2_to_imgmsg(det_image, encoding="passthrough")
-            # det_image_msg.header = header_cam
-            # det_image_msg.encoding = 'bgr8'
+            det_image_msg = bridge.cv2_to_imgmsg(det_image, encoding="passthrough")
+            det_image_msg.header = header_cam
+            det_image_msg.encoding = 'bgr8'
 
             depth_msg = bridge.cv2_to_imgmsg(depth, encoding="passthrough")
             depth_msg.header = header_cam
@@ -319,7 +322,7 @@ def main():
 
             pub_tf.publish(tf_msg)
             pub_color.publish(color_msg)
-            # pub_det_image.publish(det_image_msg)
+            pub_det_image.publish(det_image_msg)
             pub_depth.publish(depth_msg)
             pub_objs.publish(obj_instances_msg)
             pub_pc.publish(point_cloud_msg)

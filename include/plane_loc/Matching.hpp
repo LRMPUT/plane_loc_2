@@ -172,7 +172,8 @@ private:
                                       double &resError,
                                       bool &fullConstr,
                                       double &svdr,
-                                      double &svdt);
+                                      double &svdt,
+                                      bool debug = false);
 };
 
 #endif /* INCLUDE_MATCHING_HPP_ */

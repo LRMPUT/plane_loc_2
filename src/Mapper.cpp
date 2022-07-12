@@ -177,6 +177,8 @@ void Mapper::runBag(const std::string &bagFilename,
         ROS_INFO_STREAM(TAG << "outputBag.isOpen() = " << outputBag.isOpen());
     }
 
+    auto processDur = std::chrono::nanoseconds(0);
+    int nProcessDur = 0;
     for (rosbag::MessageInstance const m: rosbag::View(inputBag)) {
         if (m.getTopic() == "/tf_static" || m.getTopic() == "/tf") {
             if (outputBag.isOpen()) {
@@ -193,13 +195,17 @@ void Mapper::runBag(const std::string &bagFilename,
                 sensor_msgs::PointCloud2 pcMsg;
                 pcMsg.header.stamp = ros::Time(0.0);
 
+                auto startTs = std::chrono::steady_clock::now();
                 process(curFrameIdx,
                         curObjsMsg,
                         tfBufferBag,
                         mapSerMsg,
-                        pcMsg,
+                        pcMsg/*,
                         viewer,
-                        v1, v2);
+                        v1, v2*/);
+                auto endTs = std::chrono::steady_clock::now();
+                processDur += endTs - startTs;
+                nProcessDur += 1;
 
                 if (outputBag.isOpen() && mapSerMsg.header.stamp.toSec() > 0.0 && pcMsg.header.stamp.toSec() > 0.0) {
                     // cout << "mapSerMsg.header.stamp = " << mapSerMsg.header.stamp.toSec() << endl;
@@ -210,9 +216,15 @@ void Mapper::runBag(const std::string &bagFilename,
             }
         }
     }
+    if (nProcessDur > 0) {
+        ROS_INFO_STREAM(TAG << "Mean processing time: " << (float)processDur.count() / nProcessDur / 1.0e6f << " ms");
+    }
 
     if (!outputMapFilename.empty()) {
         ROS_INFO_STREAM(TAG << "saving map to file " << outputMapFilename);
+
+        map.removeObjsEolThresh(4);
+
         std::ofstream ofs(outputMapFilename.c_str());
         if (ofs.is_open()) {
             boost::archive::binary_oarchive oa(ofs);
@@ -221,9 +233,44 @@ void Mapper::runBag(const std::string &bagFilename,
         } else {
             ROS_ERROR_STREAM(TAG << "could not open file " << outputMapFilename);
         }
+
+        cout << "visualizing" << endl;
+        if (viewer) {
+            viewer->removeAllPointClouds();
+            viewer->removeAllShapes();
+            viewer->removeAllCoordinateSystems();
+
+            map.display(viewer, v1, v2);
+
+            viewer->addCoordinateSystem();
+            // viewer->addCoordinateSystem(1.0, sensorInOdom.inverse().cast<float>(), "camera");
+            // viewer->addCoordinateSystem(1.0, sensorInOdom.cast<float>(), "camera");
+
+
+            static bool init = false;
+            if (!init) {
+                viewer->resetStoppedFlag();
+                viewer->initCameraParameters();
+                viewer->setCameraPosition(0.0, 0.0, -6.0, 0.0, -1.0, 0.0);
+                while (!viewer->wasStopped()) {
+                    viewer->spinOnce(100);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                }
+                init = true;
+            }
+            else {
+                viewer->spinOnce(100);
+                // viewer->resetStoppedFlag();
+                // while (!viewer->wasStopped()) {
+                //     viewer->spinOnce(100);
+                //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                // }
+            }
+        }
+        cout << "end visualizing" << endl;
     }
 
-    map.exportPointCloud("map.ply");
+    // map.exportPointCloud("map.ply");
 }
 
 void Mapper::objsCallback(const plane_loc::Serialized::ConstPtr &nobjsMsg) {
@@ -304,8 +351,8 @@ void Mapper::process(int &curFrameIdx,
 
         if (curFrameIdx % mergeMapFrames == 0)
         {
-            viewer->removeAllPointClouds();
-            viewer->removeAllShapes();
+            // viewer->removeAllPointClouds();
+            // viewer->removeAllShapes();
 
             cout << "Merging map" << endl;
             map.mergeMapObjInstances(/*viewer,
@@ -361,30 +408,30 @@ void Mapper::process(int &curFrameIdx,
                 pubMap.publish(mapSerMsg);
             }
 
-            // cout << "publishing point cloud" << endl;
-            // {
-            //     pcl::PointCloud<pcl::PointXYZRGBL>::Ptr pointCloudLab = mapPub.getLabeledColorPointCloud();
-            //
-            //     // sensor_msgs::PointCloud2 pcMsg;
-            //     pcl::toROSMsg(*pointCloudLab, pcMsg);
-            //     pcMsg.header = objsMsg->header;
-            //     // pcMsg.header.frame_id = "odom";
-            //     // pcMsg.header.seq = objsMsg->header.seq;
-            //
-            //     pubPointCloud.publish(pcMsg);
-            // }
+            cout << "publishing point cloud" << endl;
+            {
+                pcl::PointCloud<pcl::PointXYZRGBL>::Ptr pointCloudLab = mapPub.getLabeledColorPointCloud();
 
-            cout << "visualizing" << endl;
+                // sensor_msgs::PointCloud2 pcMsg;
+                pcl::toROSMsg(*pointCloudLab, pcMsg);
+                pcMsg.header = objsMsg->header;
+                // pcMsg.header.frame_id = "odom";
+                // pcMsg.header.seq = objsMsg->header.seq;
+
+                pubPointCloud.publish(pcMsg);
+            }
+
             if (viewer) {
+                cout << "visualizing" << endl;
                 viewer->removeAllPointClouds();
                 viewer->removeAllShapes();
                 viewer->removeAllCoordinateSystems();
 
-                // mapPub.display(viewer, v1, v2);
+                mapPub.display(viewer, v1, v2);
 
                 viewer->addCoordinateSystem();
-                viewer->addCoordinateSystem(1.0, sensorInOdom.inverse().cast<float>(), "camera");
-                // viewer->addCoordinateSystem(1.0, sensorInOdom.cast<float>(), "camera");
+                // viewer->addCoordinateSystem(1.0, sensorInOdom.inverse().cast<float>(), "camera");
+                viewer->addCoordinateSystem(1.0, sensorInOdom.cast<float>(), "camera");
 
 
                 static bool init = false;
@@ -406,8 +453,8 @@ void Mapper::process(int &curFrameIdx,
                     //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
                     // }
                 }
+                cout << "end visualizing" << endl;
             }
-            cout << "end visualizing" << endl;
         }
     }
 

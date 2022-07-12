@@ -13,6 +13,7 @@
 #include <random>
 #include <unordered_set>
 #include <memory>
+#include <chrono>
 
 // Eigen
 #include <Eigen/Dense>
@@ -66,6 +67,12 @@ std::vector<ObjInstanceView::Ptr> getObjInstanceViews(const py::array_t<float> &
                                                       const py::array_t<float> &depthCovar,
                                                       bool projectOntoPlane = false)
 {
+    static constexpr float maxDepth = 25.0;
+    static auto processDur = std::chrono::nanoseconds(0);
+    static int nProcessDur = 0;
+
+    auto startTs = std::chrono::steady_clock::now();
+
     int nplanes = params.shape(0);
     int nrows = mask.shape(1);
     int ncols = mask.shape(2);
@@ -76,6 +83,8 @@ std::vector<ObjInstanceView::Ptr> getObjInstanceViews(const py::array_t<float> &
     double fy = K.at(1, 1);
     double cx = K.at(0, 2);
     double cy = K.at(1, 2);
+    // TODO Properly pass baseline value
+    float baseline = 0.3;
 
     cv::Mat pointsXyz;
     cv::Mat KMat(3, 3, CV_32FC1, cv::Scalar(0));
@@ -92,8 +101,10 @@ std::vector<ObjInstanceView::Ptr> getObjInstanceViews(const py::array_t<float> &
         for (int r = 0; r < nrows; ++r) {
             for (int c = 0; c < ncols; ++c) {
                 // do not use points with too large covariance
-                if (sqrt(depthCovar.at(r, c)) / max(depth.at(r, c), 0.2f) < 0.1 && sqrt(depthCovar.at(r, c)) < 0.5) {
-                    depthMat.at<float>(r, c) = depth.at(r, c);
+                float dispStddev = sqrt(depthCovar.at(r, c)) * (fx * baseline) / max(depth.at(r, c) * depth.at(r, c), 1.0e-4f);
+                // if (sqrt(depthCovar.at(r, c)) / max(depth.at(r, c), 1.0e-4f) < 0.1 && sqrt(depthCovar.at(r, c)) < 1.0) {
+                if (dispStddev < 5.0) {
+                    depthMat.at<float>(r, c) = std::min(depth.at(r, c), maxDepth);
                 }
                 else {
                     depthMat.at<float>(r, c) = 0.0f;
@@ -201,7 +212,7 @@ std::vector<ObjInstanceView::Ptr> getObjInstanceViews(const py::array_t<float> &
 
 
         if(pointsCorr){
-            static constexpr float dimLimit = 20;
+            static constexpr float dimLimit = maxDepth;
             Eigen::MatrixPt pointCloud(4, pts3d.size());
             // Eigen::MatrixPt pointCloudOrig(4, pts3d.size());
             Eigen::MatrixCol pointCloudCol(4, pts3d.size());
@@ -253,6 +264,12 @@ std::vector<ObjInstanceView::Ptr> getObjInstanceViews(const py::array_t<float> &
         }
 
     }
+
+    auto endTs = std::chrono::steady_clock::now();
+    processDur += endTs - startTs;
+    nProcessDur += 1;
+
+    cout << "Mean processing time: " << (float)processDur.count() / nProcessDur / 1.0e6f << " ms" << endl;
 
     return objInstanceViews;
 }

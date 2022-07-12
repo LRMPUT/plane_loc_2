@@ -13,9 +13,9 @@ int main(int argc, char** argv){
 
     Mapper mapper;
     // use this to build a global map
-    mapper.runBag("/mnt/data/TERRINet/scenes/scene0000_00/scene0000_00_depth.bag",
-                  "",
-                  "/mnt/data/TERRINet/scenes/scene0000_00/scene0000_00.map");
+    // mapper.runBag("/mnt/data/TERRINet/scenes/scene0000_00/scene0000_00_depth.bag",
+    //               "",
+    //               "/mnt/data/TERRINet/scenes/scene0000_00/scene0000_00.map");
     // use this to create a bag of local maps
     // mapper.runBag("/mnt/data/TERRINet/scenes/scene0000_02/scene0000_02_depth.bag",
     //               "/mnt/data/TERRINet/scenes/scene0000_02/scene0000_02_map.bag",
@@ -33,6 +33,20 @@ int main(int argc, char** argv){
     //               "/mnt/data/TERRINet/scenes/scene0002_01/scene0002_01.map");
     // mapper.runBag("/mnt/data/TERRINet/scenes/scene0002_02/scene0002_02_depth.bag",
     //               "/mnt/data/TERRINet/scenes/scene0002_02/scene0002_02_map.bag",
+    //               "");
+
+    // mapper.runBag("/media/janw/JanW/datasets/JW/InPUT/scenes/scene0000_00/scene0000_00_depth.bag",
+    //           "",
+    //           "/media/janw/JanW/datasets/JW/InPUT/scenes/scene0000_00/scene0000_00.map");
+    // mapper.runBag("/media/janw/JanW/datasets/JW/InPUT/scenes/scene0000_02/scene0000_02_depth.bag",
+    //               "/media/janw/JanW/datasets/JW/InPUT/scenes/scene0000_02/scene0000_02_map.bag",
+    //               "");
+
+    mapper.runBag("/media/janw/JanW/datasets/JW/InPUT/scenes/scene0001_00/scene0001_00_depth.bag",
+              "",
+              "/media/janw/JanW/datasets/JW/InPUT/scenes/scene0001_00/scene0001_00.map");
+    // mapper.runBag("/media/janw/JanW/datasets/JW/InPUT/scenes/scene0001_01/scene0001_01_depth.bag",
+    //               "/media/janw/JanW/datasets/JW/InPUT/scenes/scene0001_01/scene0001_01_map.bag",
     //               "");
 
     return EXIT_SUCCESS;

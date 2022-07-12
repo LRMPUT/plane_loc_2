@@ -74,7 +74,6 @@ Localizer::Localizer()  :
     mapTopic = readParameter<std::string>(nh, "map_topic", "/mapper/map", TAG);
     scoreThresh = readParameter(nh, "score_thresh", 1.0, TAG);
     scoreDiffThresh = readParameter(nh, "score_diff_thresh", 0.0, TAG);
-    fitThresh = readParameter(nh, "fit_thresh", 0.07, TAG);
     distinctThresh = readParameter(nh, "distinct_thresh", 6, TAG);
     matchedRatioThresh = readParameter(nh, "matched_ratio_thresh", 0.75, TAG);
 
@@ -211,7 +210,10 @@ void Localizer::process(const plane_loc::Serialized::ConstPtr &curMapMsg,
         sensorInMap = tf2::transformToEigen(sensorInMapTS);
     }
 
+    // if((sensorInMap.translation() - Eigen::Vector3d(-11.7541, -11.5843, 0.053426)).norm() < 0.1){
     if(true){
+        bool stopFlag = false;
+
         vectorVector7d planesTrans;
         std::vector<double> planesTransScores;
         std::vector<double> planesMatchedRatio;
@@ -237,20 +239,73 @@ void Localizer::process(const plane_loc::Serialized::ConstPtr &curMapMsg,
             }
         }
 
+        static auto processDur = std::chrono::nanoseconds(0);
+        static int nProcessDur = 0;
+
+        // pcl::visualization::PCLVisualizer::Ptr viewerMatch(new pcl::visualization::PCLVisualizer("matching"));
+        // int vMatch1 = 0;
+        // int vMatch2 = 0;
+        // viewerMatch->createViewPort(0.0, 0.0, 0.5, 1.0, vMatch1);
+        // viewerMatch->createViewPort(0.5, 0.0, 1.0, 1.0, vMatch2);
+        // viewerMatch->addCoordinateSystem();
+
+        auto startTs = std::chrono::steady_clock::now();
+        // matchType = Matching::matchLocalToGlobal(settings,
+        //                                       globalMap,
+        //                                       curMap,
+        //                                       planesTrans,
+        //                                       planesTransScores,
+        //                                          planesMatchedRatio,
+        //                                       planesTransDistinct,
+        //                                          transforms,
+        //                                          viewerMatch,
+        //                                          vMatch1,
+        //                                          vMatch2,
+        //                                          sensorInMap.matrix());
         matchType = Matching::matchLocalToGlobal(settings,
-                                              globalMap,
-                                              curMap,
-                                              planesTrans,
-                                              planesTransScores,
+                                                 globalMap,
+                                                 curMap,
+                                                 planesTrans,
+                                                 planesTransScores,
                                                  planesMatchedRatio,
-                                              planesTransDistinct,
+                                                 planesTransDistinct,
                                                  transforms,
                                                  viewer,
                                                  v1,
                                                  v2,
                                                  sensorInMap.matrix());
+        auto endTs = std::chrono::steady_clock::now();
+        processDur += endTs - startTs;
+        nProcessDur += 1;
+        if (nProcessDur > 0) {
+            ROS_INFO_STREAM(TAG << "Mean processing time: " << (float)processDur.count() / nProcessDur / 1.0e6f << " ms");
+        }
 
         std::ofstream resFile("results.txt", std::ios_base::app);
+
+        {
+            vectorVector7d newPlanesTrans;
+            std::vector<double> newPlanesTransScores;
+            std::vector<double> newPlanesMatchedRatio;
+            std::vector<int> newPlanesTransDistinct;
+            for (int t = 0; t < planesTrans.size(); ++t) {
+                if (planesMatchedRatio[t] >= matchedRatioThresh && planesTransDistinct[t] >= distinctThresh) {
+                    newPlanesTrans.push_back(planesTrans[t]);
+                    newPlanesTransScores.push_back(planesTransScores[t]);
+                    newPlanesMatchedRatio.push_back(planesMatchedRatio[t]);
+                    newPlanesTransDistinct.push_back(planesTransDistinct[t]);
+                }
+            }
+
+            planesTrans.swap(newPlanesTrans);
+            planesTransScores.swap(newPlanesTransScores);
+            planesMatchedRatio.swap(newPlanesMatchedRatio);
+            planesTransDistinct.swap(newPlanesTransDistinct);
+
+            if (planesTrans.size() == 0) {
+                matchType = Matching::MatchType::Unknown;
+            }
+        }
 
         bool isUnamb = true;
         if( matchType == Matching::MatchType::Ok){
@@ -259,11 +314,11 @@ void Localizer::process(const plane_loc::Serialized::ConstPtr &curMapMsg,
             if(planesTransScores.front() < scoreThresh){
                 isUnamb = false;
             }
-            if(planesTransScores.size() > 1){
-                if(std::abs(planesTransScores[0] - planesTransScores[1]) < scoreDiffThresh){
-                    isUnamb = false;
-                }
-            }
+            // if(planesTransScores.size() > 1){
+            //     if(std::abs(planesTransScores[0] - planesTransScores[1]) < scoreDiffThresh){
+            //         isUnamb = false;
+            //     }
+            // }
             if(planesMatchedRatio.front() < matchedRatioThresh){
                 isUnamb = false;
             }
@@ -369,9 +424,9 @@ void Localizer::process(const plane_loc::Serialized::ConstPtr &curMapMsg,
 
         {
             int recCnt = corrCnt + incorrCnt;
-            ROS_INFO_STREAM(TAG << "corrCnt = " << corrCnt);
-            ROS_INFO_STREAM(TAG << "incorrCnt = " << incorrCnt);
-            ROS_INFO_STREAM(TAG << "unkCnt = " << unkCnt);
+            ROS_INFO_STREAM(TAG << "corrCnt = " << corrCnt << ", ratio = " << (float)corrCnt / (corrCnt + incorrCnt + unkCnt));
+            ROS_INFO_STREAM(TAG << "incorrCnt = " << incorrCnt << ", ratio = " << (float)incorrCnt / (corrCnt + incorrCnt + unkCnt));
+            ROS_INFO_STREAM(TAG << "unkCnt = " << unkCnt << ", ratio = " << (float)unkCnt / (corrCnt + incorrCnt + unkCnt));
             if(recCnt > 0){
                 ROS_INFO_STREAM(TAG << "mean error = " << sumError / recCnt);
                 ROS_INFO_STREAM(TAG << "mean error lin = " << sumErrorLin / recCnt);
@@ -379,6 +434,55 @@ void Localizer::process(const plane_loc::Serialized::ConstPtr &curMapMsg,
                 ROS_INFO_STREAM(TAG << "max error lin = " << maxErrorLin);
                 ROS_INFO_STREAM(TAG << "max error ang = " << maxErrorAng * 180.0 / M_PI);
             }
+        }
+        if( matchType == Matching::MatchType::Ok && isUnamb){
+            ROS_INFO_STREAM(TAG << "LOCALIZED");
+        }
+        else {
+            ROS_INFO_STREAM(TAG << "UNKNOWN");
+        }
+
+        if (viewer) {
+            // viewer->removeAllPointClouds();
+            viewer->removeAllShapes();
+            viewer->removeAllCoordinateSystems();
+
+            Map localMapTrans(curMap);
+            localMapTrans.transform(Misc::toVector(sensorInMap.matrix()));
+            localMapTrans.display(viewer, v2, -1);
+
+            viewer->addCoordinateSystem();
+            viewer->addCoordinateSystem(1.0, sensorInMap.cast<float>(), "camera");
+
+            static bool init = false;
+            if (!init) {
+                globalMap.display(viewer, v1, -1);
+
+                viewer->resetStoppedFlag();
+                viewer->initCameraParameters();
+                viewer->setCameraPosition(0.0, 0.0, 6.0, 0.0, -1.0, 0.0);
+
+                // while (!viewer->wasStopped()) {
+                //     viewer->spinOnce(100);
+                //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                // }
+
+                viewer->spinOnce(100);
+
+                init = true;
+            } else {
+                viewer->spinOnce(100);
+
+                if (stopFlag) {
+                    viewer->resetStoppedFlag();
+                    while (!viewer->wasStopped()) {
+                        viewer->spinOnce(100);
+                        // std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    }
+                }
+            }
+
+            localMapTrans.cleanDisplay(viewer, v2, -1);
         }
     }
 }
